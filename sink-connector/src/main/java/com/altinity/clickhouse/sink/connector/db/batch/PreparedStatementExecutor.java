@@ -282,6 +282,7 @@ public class PreparedStatementExecutor {
                 if(true == columnNameToIndexMap.containsKey(key)) {
                     index = columnNameToIndexMap.get(key);
                 } else {
+                    log.error("***** Column index missing for custom column ****" + key);
                     continue;
                 }
                 if (key.equalsIgnoreCase("tags")) {
@@ -297,12 +298,14 @@ public class PreparedStatementExecutor {
                     
                     Array sqlArray = conn.createArrayOf("UInt32", tagArray);
                     ps.setArray(index, sqlArray);
-                } else {
-                    ps.setString(index, customProps.getString(key));
+                } else if (customProps.has(key) && !customProps.isNull(key)) {
+                    ps.setString(index, customProps.get(key).toString());
                 }
             }
         } catch (JSONException e) {
-        // Handle the case where the string is not valid JSON
+            log.error("***** custom column error ****");
+            log.error(e);
+            // Handle the case where the string is not valid JSON
         }
 
         // Kafka metadata columns.
