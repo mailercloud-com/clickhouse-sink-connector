@@ -24,10 +24,13 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.json.JSONObject;
+import org.json.JSONException;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.sql.Array;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -138,17 +141,17 @@ public class PreparedStatementExecutor {
 
                     if (CdcRecordState.CDC_RECORD_STATE_BEFORE == getCdcSectionBasedOnOperation(record.getCdcOperation())) {
                         insertPreparedStatement(entry.getKey().right, ps, record.getBeforeModifiedFields(), record, record.getBeforeStruct(),
-                                true, config, columnToDataTypeMap, engine);
+                                true, config, columnToDataTypeMap, engine, conn);
                     } else if (CdcRecordState.CDC_RECORD_STATE_AFTER == getCdcSectionBasedOnOperation(record.getCdcOperation())) {
                         insertPreparedStatement(entry.getKey().right, ps, record.getAfterModifiedFields(), record, record.getAfterStruct(),
-                                false, config, columnToDataTypeMap, engine);
+                                false, config, columnToDataTypeMap, engine, conn);
                     } else if (CdcRecordState.CDC_RECORD_STATE_BOTH == getCdcSectionBasedOnOperation(record.getCdcOperation())) {
                         if (engine != null && engine.getEngine().equalsIgnoreCase(DBMetadata.TABLE_ENGINE.COLLAPSING_MERGE_TREE.getEngine())) {
                             insertPreparedStatement(entry.getKey().right, ps, record.getBeforeModifiedFields(), record, record.getBeforeStruct(),
-                                    true, config, columnToDataTypeMap, engine);
+                                    true, config, columnToDataTypeMap, engine, conn);
                         }
                         insertPreparedStatement(entry.getKey().right, ps, record.getAfterModifiedFields(), record, record.getAfterStruct(),
-                                false, config, columnToDataTypeMap, engine);
+                                false, config, columnToDataTypeMap, engine, conn);
                     } else {
                         log.error("INVALID CDC RECORD STATE");
                     }
@@ -200,7 +203,8 @@ public class PreparedStatementExecutor {
                                         ClickHouseStruct record, Struct struct, boolean beforeSection,
                                         ClickHouseSinkConnectorConfig config,
                                         Map<String, String> columnNameToDataTypeMap,
-                                        DBMetadata.TABLE_ENGINE engine) throws Exception {
+                                        DBMetadata.TABLE_ENGINE engine,
+                                        ClickHouseConnection conn) throws Exception {
 
 
         // int index = 1;
@@ -269,6 +273,36 @@ public class PreparedStatementExecutor {
                 log.error(String.format("**** DATA TYPE NOT HANDLED type(%s), name(%s), column name(%s)", type.toString(),
                         schemaName, colName));
             }
+        }
+        try {
+            JSONObject customProps = new JSONObject(struct.get("custom_properties").toString());
+            // Loop through key-value pairs
+            for (String key : customProps.keySet()) {
+                int index = -1;
+                if(true == columnNameToIndexMap.containsKey(key)) {
+                    index = columnNameToIndexMap.get(key);
+                } else {
+                    continue;
+                }
+                if (key.equalsIgnoreCase("tags")) {
+                    JSONObject tagsObject = customProps.getJSONObject(key);
+                    Long[] tagArray = new Long[tagsObject.length()];
+                    int i = 0;
+                    for (String tagKey : tagsObject.keySet()) {
+                      try {
+                        tagArray[i++] = Long.parseLong(tagKey);
+                      } catch (NumberFormatException e) {
+                      }
+                    }
+                    
+                    Array sqlArray = conn.createArrayOf("UInt32", tagArray);
+                    ps.setArray(index, sqlArray);
+                } else {
+                    ps.setString(index, customProps.getString(key));
+                }
+            }
+        } catch (JSONException e) {
+        // Handle the case where the string is not valid JSON
         }
 
         // Kafka metadata columns.
