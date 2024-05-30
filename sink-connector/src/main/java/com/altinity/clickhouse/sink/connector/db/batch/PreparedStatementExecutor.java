@@ -274,10 +274,6 @@ public class PreparedStatementExecutor {
                         schemaName, colName));
             }
         }
-        if(true == columnNameToIndexMap.containsKey("_version")) {
-            int index = columnNameToIndexMap.get("_version");
-            ps.setLong(index, (System.currentTimeMillis() * 1_000_000) + (System.nanoTime() % 1_000_000));
-        }
         try {
             JSONObject customProps = new JSONObject(struct.get("custom_properties").toString());
             // Loop through key-value pairs
