@@ -286,18 +286,22 @@ public class PreparedStatementExecutor {
                     continue;
                 }
                 if (key.equalsIgnoreCase("tags")) {
-                    JSONObject tagsObject = customProps.getJSONObject(key);
-                    Long[] tagArray = new Long[tagsObject.length()];
-                    int i = 0;
-                    for (String tagKey : tagsObject.keySet()) {
-                      try {
-                        tagArray[i++] = Long.parseLong(tagKey);
-                      } catch (NumberFormatException e) {
-                      }
+                    try {
+                        JSONObject tagsObject = customProps.getJSONObject(key);
+                        Long[] tagArray = new Long[tagsObject.length()];
+                        int i = 0;
+                        for (String tagKey : tagsObject.keySet()) {
+                          try {
+                            tagArray[i++] = Long.parseLong(tagKey);
+                          } catch (NumberFormatException e) {
+                          }
+                        }
+                        Array sqlArray = conn.createArrayOf("UInt32", tagArray);
+                        ps.setArray(index, sqlArray);
+                    } catch (JSONException e) {
+                        log.error("***** invalid tags value ****");
+                        log.error(e);
                     }
-                    
-                    Array sqlArray = conn.createArrayOf("UInt32", tagArray);
-                    ps.setArray(index, sqlArray);
                 } else if (customProps.has(key) && !customProps.isNull(key)) {
                     ps.setString(index, customProps.get(key).toString());
                 }
