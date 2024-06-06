@@ -139,21 +139,25 @@ public class PreparedStatementExecutor {
                         continue;
                     }
 
+                    boolean error = false;
                     if (CdcRecordState.CDC_RECORD_STATE_BEFORE == getCdcSectionBasedOnOperation(record.getCdcOperation())) {
-                        insertPreparedStatement(entry.getKey().right, ps, record.getBeforeModifiedFields(), record, record.getBeforeStruct(),
+                        error = insertPreparedStatement(entry.getKey().right, ps, record.getBeforeModifiedFields(), record, record.getBeforeStruct(),
                                 true, config, columnToDataTypeMap, engine, conn);
                     } else if (CdcRecordState.CDC_RECORD_STATE_AFTER == getCdcSectionBasedOnOperation(record.getCdcOperation())) {
-                        insertPreparedStatement(entry.getKey().right, ps, record.getAfterModifiedFields(), record, record.getAfterStruct(),
+                        error = insertPreparedStatement(entry.getKey().right, ps, record.getAfterModifiedFields(), record, record.getAfterStruct(),
                                 false, config, columnToDataTypeMap, engine, conn);
                     } else if (CdcRecordState.CDC_RECORD_STATE_BOTH == getCdcSectionBasedOnOperation(record.getCdcOperation())) {
                         if (engine != null && engine.getEngine().equalsIgnoreCase(DBMetadata.TABLE_ENGINE.COLLAPSING_MERGE_TREE.getEngine())) {
-                            insertPreparedStatement(entry.getKey().right, ps, record.getBeforeModifiedFields(), record, record.getBeforeStruct(),
+                            error = insertPreparedStatement(entry.getKey().right, ps, record.getBeforeModifiedFields(), record, record.getBeforeStruct(),
                                     true, config, columnToDataTypeMap, engine, conn);
                         }
-                        insertPreparedStatement(entry.getKey().right, ps, record.getAfterModifiedFields(), record, record.getAfterStruct(),
+                        error = insertPreparedStatement(entry.getKey().right, ps, record.getAfterModifiedFields(), record, record.getAfterStruct(),
                                 false, config, columnToDataTypeMap, engine, conn);
                     } else {
                         log.error("INVALID CDC RECORD STATE");
+                    }
+                    if (error) {
+                        continue;
                     }
 
                     ps.addBatch();
@@ -199,14 +203,23 @@ public class PreparedStatementExecutor {
      * @param fields
      * @param record
      */
-    public void insertPreparedStatement(Map<String, Integer> columnNameToIndexMap, PreparedStatement ps, List<Field> fields,
+    public boolean insertPreparedStatement(Map<String, Integer> columnNameToIndexMap, PreparedStatement ps, List<Field> fields,
                                         ClickHouseStruct record, Struct struct, boolean beforeSection,
                                         ClickHouseSinkConnectorConfig config,
                                         Map<String, String> columnNameToDataTypeMap,
                                         DBMetadata.TABLE_ENGINE engine,
                                         ClickHouseConnection conn) throws Exception {
-
-
+                                            
+        try {
+            Object emailVal = struct.get("email");
+            if (emailVal == null || emailVal.toString().isEmpty()) {
+                log.error("Email empty skipping");
+                return true;
+            }
+        } catch (Exception e) {
+            log.error("Email data fetch exception:- ", e);
+             return true;
+        }
         // int index = 1;
         // Use this map's key natural ordering as the source of truth.
         for (Map.Entry<String, String> entry : columnNameToDataTypeMap.entrySet()) {
@@ -394,6 +407,7 @@ public class PreparedStatementExecutor {
                 }
             }
         }
+        return false;
     }
 
     /**
